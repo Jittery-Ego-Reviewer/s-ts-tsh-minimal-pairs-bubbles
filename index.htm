@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+   <meta charset="UTF-8">
+   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+   <title>語音辨識：泡泡射擊遊戲</title>
+   <script src="https://cdn.tailwindcss.com"></script>
+   <style>
+       @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap');
+       
+       body {
+           font-family: 'Nunito', 'Microsoft JhengHei', sans-serif;
+           background-color: #f0f8ff;
+           touch-action: none; /* 防止在手機上滑動畫面 */
+           -webkit-user-select: none; /* 防止連按時選取文字 */
+           user-select: none;
+           -webkit-touch-callout: none; /* 防止長按彈出選單 */
+           overflow: hidden;
+       }
+ 
+       .bubble-pop-anim {
+           animation: pop 0.3s ease-out forwards;
+       }
+ 
+       @keyframes pop {
+           0% { transform: scale(1); opacity: 1; }
+           50% { transform: scale(1.2); opacity: 0.8; }
+           100% { transform: scale(0); opacity: 0; }
+       }
+ 
+       .modal-bounce {
+           animation: bounceIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+       }
+ 
+       @keyframes bounceIn {
+           0% { transform: scale(0.5); opacity: 0; }
+           100% { transform: scale(1); opacity: 1; }
+       }
+       
+       canvas {
+           cursor: crosshair;
+           touch-action: none;
+       }
+   </style>
+</head>
+<body class="h-[100dvh] w-screen flex items-center justify-center p-2 sm:p-4">
+ 
+   <!-- 遊戲主要容器 -->
+   <div class="relative w-full h-full max-w-3xl max-h-[900px] bg-white rounded-3xl sm:rounded-[2rem] shadow-2xl border-4 sm:border-8 border-blue-300 flex flex-col overflow-hidden">
+       
+       <!-- 頂部資訊欄 (HUD) -->
+       <div class="bg-blue-100 p-4 flex justify-between items-center border-b-4 border-blue-200 z-10">
+           <div class="flex gap-3 items-center">
+                <button onclick="showHome()" class="bg-blue-300 hover:bg-blue-400 text-blue-900 font-black py-2 px-4 rounded-full shadow-sm text-sm transition-colors">
+                    首頁
+                </button>
+                <div class="text-2xl font-bold text-blue-800 bg-white px-4 py-2 rounded-full shadow-sm">
+                    等級 <span id="levelDisplay">1</span>
+                </div>
+           </div>
+           
+           <!-- 進度條 -->
+           <div class="flex-1 mx-6">
+                <div class="flex justify-between text-sm font-bold text-blue-700 mb-1">
+                    <span>進度</span>
+                    <span id="progressText">0/10</span>
+                </div>
+                <div class="w-full bg-white rounded-full h-4 shadow-inner border-2 border-blue-200 overflow-hidden">
+                    <div id="progressBar" class="bg-green-400 h-full rounded-full transition-all duration-500 w-0"></div>
+                </div>
+           </div>
+       </div>
+ 
+       <!-- 遊戲畫布 -->
+       <div class="flex-1 relative bg-gradient-to-b from-blue-50 to-blue-200">
+           <canvas id="gameCanvas" class="w-full h-full block"></canvas>
+ 
+           <!-- 文字彈出視窗 (詞彙) -->
+           <div id="wordModal" class="hidden absolute inset-0 bg-black/40 backdrop-blur-sm z-30 flex items-center justify-center p-4">
+               <div class="bg-white p-6 sm:p-8 rounded-3xl shadow-2xl modal-bounce max-w-lg w-full text-center border-4 sm:border-8 border-yellow-300">
+                    <h2 class="text-xl sm:text-2xl font-bold text-gray-500 mb-6">請家長讀出以下字詞：</h2>
+                  　<div class="flex justify-center items-center gap-4 sm:gap-8 mb-8">
+                        <div id="word1" class="text-4xl sm:text-6xl font-black text-blue-600">家</div>
+                        <div class="text-2xl sm:text-4xl font-bold text-gray-300">VS</div>
+                        <div id="word2" class="text-4xl sm:text-6xl font-black text-red-500">（一）打</div>
+                    </div>
+                    <button onclick="nextRound()" class="bg-green-500 hover:bg-green-600 text-white text-xl sm:text-2xl font-bold py-3 px-8 sm:py-4 sm:px-12 rounded-full shadow-[0_6px_0_#16a34a] active:shadow-none active:translate-y-[6px] transition-all">
+                        繼續
+                    </button>
+                </div>
+           </div>
+ 
+           <!-- 首頁彈出視窗 -->
+           <div id="homeModal" class="absolute inset-0 bg-white z-50 overflow-y-auto transition-opacity duration-500" style="touch-action: pan-y;">
+                <div class="min-h-full flex flex-col items-center justify-center p-4 py-10">
+     　　           <div class="text-center modal-bounce w-full max-w-md">
+                        <h1 class="text-4xl sm:text-5xl font-black text-blue-600 mb-2 sm:mb-4 drop-shadow-md">泡泡射擊</h1>
+                        <h2 class="text-xl sm:text-2xl font-bold text-gray-500 mb-8 sm:mb-10">語音辨識遊戲</h2>
+                        <div class="flex flex-col gap-4 sm:gap-5">
+                            <button onclick="selectLevel(0)" class="bg-blue-400 hover:bg-blue-500 text-white text-lg sm:text-2xl font-black py-3 px-6 sm:py-4 sm:px-8 rounded-full shadow-[0_6px_0_#2563eb] active:shadow-none active:translate-y-[6px] transition-all flex-shrink-0">
+                                等級 1: /s-/ vs /ts-/
+                            </button>
+                            <button onclick="selectLevel(1)" class="bg-green-400 hover:bg-green-500 text-white text-lg sm:text-2xl font-black py-3 px-6 sm:py-4 sm:px-8 rounded-full shadow-[0_6px_0_#16a34a] active:shadow-none active:translate-y-[6px] transition-all flex-shrink-0">
+                                等級 2: /ts-/ vs /tsh-/
+                            </button>
+                            <button onclick="selectLevel(2)" class="bg-yellow-400 hover:bg-yellow-500 text-white text-lg sm:text-2xl font-black py-3 px-6 sm:py-4 sm:px-8 rounded-full shadow-[0_6px_0_#ca8a04] active:shadow-none active:translate-y-[6px] transition-all flex-shrink-0">
+                                等級 3: /s-/ vs /tsh-/
+                            </button>
+                        </div>
+                    </div>
+                </div>
+           </div>
+ 
+           <!-- 過關/結束彈出視窗 (預設隱藏) -->
+           <div id="levelModal" class="hidden absolute inset-0 bg-white z-40 flex items-center justify-center p-4 transition-opacity duration-500">
+                <div class="text-center modal-bounce">
+                    <h1 id="levelTitle" class="text-4xl sm:text-6xl font-black text-blue-600 mb-4 sm:mb-6 drop-shadow-md">準備好開始了嗎？</h1>
+                    <p id="levelDesc" class="text-lg sm:text-xl text-gray-600 mb-6 sm:mb-8 font-bold">點擊畫面發射泡泡，擊中泡泡來解鎖詞語！</p>
+                    <button id="startBtn" onclick="startLevel()" class="bg-yellow-400 hover:bg-yellow-500 text-blue-900 text-2xl sm:text-3xl font-black py-3 px-10 sm:py-4 sm:px-16 rounded-full shadow-[0_8px_0_#ca8a04] active:shadow-none active:translate-y-[8px] transition-all">
+                        開始遊戲
+                    </button>
+                </div>
+            </div>
+ 
+       </div>
+   </div>
+ 
+   <script>
+       // --- 詞彙資料 (3個等級) ---
+       const levelWords = [
+           // Level 1: /s-/ vs. /ts-/
+           [["手", "走"], ["心", "針"], ["燒", "蕉"], ["叔", "祝"], ["樹", "住"], ["書", "豬"], ["信", "進"], ["室", "質"], ["生", "曾"], ["商", "張"]],
+           // Level 2: /ts-/ vs. /tsh-/
+           [["走", "醜"], ["珍", "親"], ["遮", "車"], ["祝", "速"], ["住", "處"], ["樽", "春"], ["張", "窗"], ["蒸", "稱"], ["著", "桌"], ["蛀", "處"], ["竹", "速"], ["楂", "叉"], ["蕉", "超"], ["子", "始"]],
+           // Level 3: /s-/ vs. /tsh-/
+           [["使", "齒"], ["使", "柿"], ["匙", "遲"], ["士", "刺"], ["視", "刺"], ["匙", "池"], ["數", "草"], ["些", "車"], ["燒", "超"], ["傷", "窗"], ["山", "餐"], ["蒜", "串"]]
+       ];
+ 
+       // --- 遊戲狀態 ---
+       let currentLevel = 0; // 0, 1, 2
+       let currentRound = 0; // 紀錄目前到第幾回合
+       let roundsPerLevel = 10; // 會隨等級詞彙數動態調整
+       let isPaused = true;
+       let currentWordList = [];
+ 
+       // --- Canvas 設定 ---
+       const canvas = document.getElementById('gameCanvas');
+       const ctx = canvas.getContext('2d');
+       
+       // 泡泡顏色 (紅, 藍, 黃, 綠)
+       const bubbleColors = ['#FF4B4B', '#4B9BFF', '#FFD64B', '#4BFF6A'];
+ 
+       let bubbles = [];
+       let projectiles = [];
+       let particles = [];
+       let floatingTexts = []; // 用於顯示「連環爆破!」等文字
+       let nextProjectileColor = '#FF4B4B'; // 預告下一次射出的泡泡顏色
+ 
+       // --- 顯示首頁 ---
+       window.showHome = function() {
+           isPaused = true;
+           document.getElementById("homeModal").classList.remove("hidden");
+           document.getElementById("levelModal").classList.add("hidden");
+           document.getElementById("wordModal").classList.add("hidden");
+       }
+ 
+       // --- 選擇等級 ---
+       window.selectLevel = function(levelIndex) {
+           currentLevel = levelIndex;
+           document.getElementById("homeModal").classList.add("hidden");
+           
+           // 確保按鈕綁定的是開始遊戲邏輯
+           document.getElementById("startBtn").onclick = startLevel;
+           startLevel();
+       }
+ 
+       // --- 初始化與調整畫布大小 ---
+       function resize() {
+           canvas.width = canvas.parentElement.clientWidth;
+           canvas.height = canvas.parentElement.clientHeight;
+       }
+       window.addEventListener('resize', resize);
+       resize();
+ 
+       // --- 輔助函數：打亂陣列 ---
+       function shuffle(array) {
+           let currentIndex = array.length, randomIndex;
+           while (currentIndex != 0) {
+                randomIndex = Math.floor(Math.random() * currentIndex);
+                currentIndex--;
+                [array[currentIndex], array[randomIndex]] = [array[randomIndex], array[currentIndex]];
+           }
+           return array;
+       }
+ 
+       // --- 生成泡泡陣列 ---
+       function spawnBubbles() {
+           bubbles = [];
+           const radius = Math.min(canvas.width / 20, 25); 
+           const columns = Math.floor(canvas.width / (radius * 2.2));
+           
+           // 計算可以容納的行數，限制在畫面上半部 (canvas.height / 2)
+           const availableHeight = canvas.height / 2;
+           let rows = Math.floor((availableHeight - radius * 2) / (radius * 1.9));
+           if (rows < 3) rows = 3; // 確保至少有幾行泡泡
+ 
+           const xOffset = (canvas.width - (columns * radius * 2.2)) / 2 + radius;
+ 
+           for (let r = 0; r < rows; r++) {
+                let colsInRow = (r % 2 === 0) ? columns : columns - 1;
+                let startX = (r % 2 === 0) ? xOffset : xOffset + radius;
+                for (let c = 0; c < colsInRow; c++) {
+                    bubbles.push({
+                        x: startX + c * radius * 2.2,
+                        y: radius * 2 + r * radius * 1.9,
+                        r: radius,
+                        color: bubbleColors[Math.floor(Math.random() * bubbleColors.length)],
+                        vx: (Math.random() - 0.5) * 0.5, // 微微的飄動
+                        vy: 0,
+                        baseX: startX + c * radius * 2.2,
+                        baseY: radius * 2 + r * radius * 1.9,
+                        angle: Math.random() * Math.PI * 2
+                    });
+                }
+           }
+       }
+ 
+       // --- 繪製 ---
+       function drawBubble(x, y, r, color) {
+           ctx.beginPath();
+           ctx.arc(x, y, r, 0, Math.PI * 2);
+           ctx.fillStyle = color;
+           ctx.fill();
+           
+           // 亮部 (3D 質感)
+           ctx.beginPath();
+           ctx.arc(x - r*0.3, y - r*0.3, r*0.2, 0, Math.PI * 2);
+           ctx.fillStyle = 'rgba(255,255,255,0.5)';
+           ctx.fill();
+ 
+           // 邊框
+           ctx.beginPath();
+           ctx.arc(x, y, r, 0, Math.PI * 2);
+           ctx.strokeStyle = 'rgba(0,0,0,0.1)';
+           ctx.lineWidth = 2;
+           ctx.stroke();
+       }
+ 
+       function drawCannon() {
+           const basex = canvas.width / 2;
+           const basey = canvas.height;
+           
+           // 繪製發射器底座
+           ctx.beginPath();
+           ctx.arc(basex, basey, 40, Math.PI, 0);
+           ctx.fillStyle = '#64748b';
+           ctx.fill();
+           
+           ctx.beginPath();
+           ctx.arc(basex, basey, 25, Math.PI, 0);
+           ctx.fillStyle = '#94a3b8';
+           ctx.fill();
+ 
+           // 繪製準備發射的泡泡 (預覽顏色)
+           if (nextProjectileColor) {
+                ctx.beginPath();
+                ctx.arc(basex, basey - 20, 12, 0, Math.PI * 2);
+               ctx.fillStyle = nextProjectileColor;
+                ctx.fill();
+                
+                // 亮部 (3D 質感)
+                ctx.beginPath();
+                ctx.arc(basex - 3.6, basey - 23.6, 2.4, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(255,255,255,0.5)';
+                ctx.fill();
+ 
+                // 邊框
+                ctx.beginPath();
+                ctx.arc(basex, basey - 20, 12, 0, Math.PI * 2);
+                ctx.strokeStyle = 'rgba(0,0,0,0.1)';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+           }
+       }
+ 
+       // --- 爆破特效 ---
+       function createExplosion(x, y, color) {
+           for (let i = 0; i < 12; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: (Math.random() - 0.5) * 10,
+                    vy: (Math.random() - 0.5) * 10,
+                    r: Math.random() * 5 + 2,
+                    color: color,
+                    life: 1.0 // 壽命 1.0 到 0
+                });
+           }
+       }
+ 
+       // --- 遊戲邏輯更新 ---
+       function update() {
+           if (isPaused) return;
+ 
+           // 更新泡泡位置 (微微浮動)
+           bubbles.forEach(b => {
+                b.angle += 0.02;
+                b.x = b.baseX + Math.sin(b.angle) * 3;
+                b.y = b.baseY + Math.cos(b.angle) * 3;
+           });
+ 
+           // 更新發射出去的子彈
+           for (let i = projectiles.length - 1; i >= 0; i--) {
+                let p = projectiles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+ 
+                // 邊界反彈 (強化反彈邏輯)
+                if (p.x - p.r <= 0) {
+                    p.vx = Math.abs(p.vx); // 強制向右反彈
+                    p.x = p.r; // 防止卡在牆壁內
+                } else if (p.x + p.r >= canvas.width) {
+                    p.vx = -Math.abs(p.vx); // 強制向左反彈
+                    p.x = canvas.width - p.r;
+                }
+ 
+                // 取得畫面上標準泡泡的大小
+                let stdRadius = bubbles.length > 0 ? bubbles[0].r : Math.min(canvas.width / 20, 25);
+ 
+                // 碰撞天花板 (黏附在頂部)
+                if (p.y <= stdRadius * 2) {
+                    let stickX = p.x;
+                    if (stickX < stdRadius) stickX = stdRadius;
+                    if (stickX > canvas.width - stdRadius) stickX = canvas.width - stdRadius;
+                    
+                    let newBubble = {
+                        x: stickX,
+                        y: stdRadius * 2, // 頂層泡泡的高度
+                        r: stdRadius,     // 放大成一般泡泡的大小
+                        color: p.color,
+                        vx: (Math.random() - 0.5) * 0.5,
+                        vy: 0,
+                        baseX: stickX,
+                        baseY: stdRadius * 2,
+                        angle: Math.random() * Math.PI * 2
+                    };
+                    bubbles.push(newBubble);
+                    projectiles.splice(i, 1);
+ 
+                   processBubblePlacement(newBubble);
+                    continue;
+                }
+ 
+                // 碰撞檢測
+                let hit = false;
+                for (let j = bubbles.length - 1; j >= 0; j--) {
+                    let b = bubbles[j];
+                    let dist = Math.hypot(p.x - b.x, p.y - b.y);
+                   if (dist < p.r + b.r) {
+                        handleHit(i, j, p);
+                        hit = true;
+                        break;
+                    }
+                }
+           }
+ 
+           // 更新粒子
+           for (let i = particles.length - 1; i >= 0; i--) {
+                let p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.05;
+                if (p.life <= 0) particles.splice(i, 1);
+           }
+ 
+           // 更新浮動文字
+           for (let i = floatingTexts.length - 1; i >= 0; i--) {
+                let ft = floatingTexts[i];
+                ft.y -= 1;
+                ft.life -= 0.02;
+                if (ft.life <= 0) floatingTexts.splice(i, 1);
+           }
+       }
+ 
+       // --- 尋找相連的同色泡泡 (廣度優先搜尋) ---
+       function getConnectedBubbles(startBubble) {
+           let cluster = [];
+           let queue = [startBubble];
+           let visited = new Set();
+           visited.add(startBubble);
+ 
+           while (queue.length > 0) {
+                let current = queue.shift();
+                cluster.push(current);
+ 
+                for (let i = 0; i < bubbles.length; i++) {
+                    let other = bubbles[i];
+                    // 如果尚未檢查過，且顏色相同
+                    if (!visited.has(other) && other.color === startBubble.color) {
+                        // 使用 baseX/Y 計算距離以免受浮動動畫影響
+                        let dist = Math.hypot(current.baseX - other.baseX, current.baseY - other.baseY);
+                        // 判斷是否相連 (給予 2.5 倍半徑的容錯空間)
+                        if (dist < startBubble.r * 2.5) {
+                            visited.add(other);
+                            queue.push(other);
+                        }
+                    }
+                }
+           }
+           return cluster;
+       }
+ 
+       // --- 處理泡泡放置與爆破邏輯 ---
+       function processBubblePlacement(newBubble) {
+           let cluster = getConnectedBubbles(newBubble);
+ 
+           if (cluster.length >= 3) {
+                let bubblesToPop = [];
+                
+                // 從畫面上移除這些相連的泡泡
+                for (let i = 0; i < cluster.length; i++) {
+                    let idx = bubbles.indexOf(cluster[i]);
+                    if (idx > -1) {
+                       bubblesToPop.push(bubbles.splice(idx, 1)[0]);
+                    }
+                }
+ 
+                // 30% 機率觸發獎勵：爆破周圍 10 個泡泡
+                let isBonus = Math.random() < 0.30;
+                if (isBonus && bubbles.length > 0) {
+                    // 根據距離排序 (以新泡泡為中心)
+                    bubbles.sort((a, b) => {
+                        let da = Math.hypot(a.x - newBubble.x, a.y - newBubble.y);
+                        let db = Math.hypot(b.x - newBubble.x, b.y - newBubble.y);
+                        return da - db;
+                    });
+                    
+                    // 取最近的最多 10 個
+                    let extraPopCount = Math.min(10, bubbles.length);
+                    let extra = bubbles.splice(0, extraPopCount);
+                   bubblesToPop.push(...extra);
+ 
+                    floatingTexts.push({
+                        x: newBubble.x,
+                        y: newBubble.y,
+                        text: "連環爆破！",
+                        color: "#FFD64B",
+                        life: 1.5
+                    });
+                }
+ 
+                // 產生特效
+                bubblesToPop.forEach(b => createExplosion(b.x, b.y, b.color));
+ 
+                // 延遲一點點顯示詞彙，讓玩家看到爆破
+                setTimeout(triggerWordPair, 300);
+           }
+       }
+ 
+       // --- 處理擊中事件 ---
+       function handleHit(projIndex, bubbleIndex, proj) {
+           let hitBubble = bubbles[bubbleIndex];
+           projectiles.splice(projIndex, 1); // 移除子彈
+ 
+           // 1. 無論顏色是否相同，先計算黏附位置將子彈轉換為泡泡
+           let dx = proj.x - hitBubble.x;
+           let dy = proj.y - hitBubble.y;
+           let dist = Math.hypot(dx, dy);
+           if (dist === 0) { dx = 0; dy = -1; dist = 1; }
+ 
+           // 泡泡之間的間距 (約為兩倍半徑)
+           let spacing = hitBubble.r * 2.1; 
+           let stickX = hitBubble.baseX + (dx / dist) * spacing;
+           let stickY = hitBubble.baseY + (dy / dist) * spacing;
+ 
+           // 防止黏在畫面外 (左右邊界)
+           if (stickX < hitBubble.r) stickX = hitBubble.r;
+           if (stickX > canvas.width - hitBubble.r) stickX = canvas.width - hitBubble.r;
+ 
+           // 防止黏出天花板上方
+           if (stickY < hitBubble.r * 2) stickY = hitBubble.r * 2;
+ 
+           // 作為新的泡泡加入陣列中
+           let newBubble = {
+               x: stickX,
+               y: stickY,
+               r: hitBubble.r, // 放大成一般泡泡的大小
+               color: proj.color,
+               vx: (Math.random() - 0.5) * 0.5,
+               vy: 0,
+               baseX: stickX,
+               baseY: stickY,
+               angle: Math.random() * Math.PI * 2
+           };
+           bubbles.push(newBubble);
+ 
+           // 執行放置後的爆破檢查
+           processBubblePlacement(newBubble);
+       }
+ 
+       // --- 觸發詞彙配對 ---
+       function triggerWordPair() {
+           isPaused = true;
+           
+           // 取得目前詞彙
+           let pair = currentWordList[currentRound % currentWordList.length];
+           
+           // 顯示 UI
+           document.getElementById("word1").innerText = pair[0];
+           document.getElementById("word2").innerText = pair[1];
+           document.getElementById("wordModal").classList.remove("hidden");
+       }
+ 
+       // --- 點擊繼續按鈕 ---
+       window.nextRound = function() {
+           document.getElementById("wordModal").classList.add("hidden");
+           currentRound++;
+           updateProgressBar();
+ 
+           if (currentRound >= roundsPerLevel) {
+               // 完成本關卡
+               currentLevel++;
+               if (currentLevel >= levelWords.length) {
+                   showEndGame();
+               } else {
+                   showLevelUp();
+               }
+           } else {
+               // 繼續同一關
+               isPaused = false;
+               // 如果泡泡太少，重新生成
+               if (bubbles.length < 15) {
+                   spawnBubbles();
+               }
+           }
+       }
+ 
+       // --- UI 更新與畫面切換 ---
+       function updateProgressBar() {
+           document.getElementById("progressText").innerText = `${currentRound}/${roundsPerLevel}`;
+           const pct = (currentRound / roundsPerLevel) * 100;
+           document.getElementById("progressBar").style.width = `${pct}%`;
+       }
+ 
+       function showLevelUp() {
+           const modal = document.getElementById("levelModal");
+           document.getElementById("levelTitle").innerText = `成功過關！`;
+           document.getElementById("levelDesc").innerText = `準備好進入等級 ${currentLevel + 1} 了嗎？`;
+           document.getElementById("startBtn").innerText = "下一關";
+           modal.classList.remove("hidden");
+       }
+ 
+       function showEndGame() {
+           const modal = document.getElementById("levelModal");
+           document.getElementById("levelTitle").innerText = `太棒了！`;
+           document.getElementById("levelTitle").classList.replace("text-blue-600", "text-green-500");
+           document.getElementById("levelDesc").innerText = `你已經完成了所有等級的挑戰！`;
+           document.getElementById("startBtn").innerText = "回首頁";
+           document.getElementById("startBtn").onclick = () => {
+               document.getElementById("levelTitle").classList.replace("text-green-500", "text-blue-600");
+               showHome();
+           };
+           modal.classList.remove("hidden");
+       }
+ 
+       window.startLevel = function() {
+           document.getElementById("levelModal").classList.add("hidden");
+           currentRound = 0;
+           document.getElementById("levelDisplay").innerText = currentLevel + 1;
+           
+           // 準備詞彙 (打亂當前等級的詞彙)
+           currentWordList = shuffle([...levelWords[currentLevel]]);
+           // 動態設定進度條所需回合數（根據詞庫數量）
+           roundsPerLevel = currentWordList.length;
+           updateProgressBar();
+           
+           projectiles = [];
+           particles = [];
+           floatingTexts = [];
+           nextProjectileColor = bubbleColors[Math.floor(Math.random() * bubbleColors.length)];
+           spawnBubbles();
+           isPaused = false;
+       }
+ 
+       // --- 瞄準與發射控制 ---
+       let aimX = canvas.width / 2;
+       let aimY = 0;
+       let isAiming = false;
+       let isDragging = false; // 用於觸控裝置
+ 
+       function fireProjectileToAim() {
+           if (isPaused) return;
+ 
+           let startX = canvas.width / 2;
+           let startY = canvas.height - 20;
+           let angle = Math.atan2(aimY - startY, aimX - startX);
+           let speed = 15;
+ 
+           // 確保只能往上方射擊 (防止往下射)
+           if (angle > -0.05) return; 
+ 
+           // 讓子彈擁有與畫面上泡泡一樣的標準大小
+           let stdRadius = bubbles.length > 0 ? bubbles[0].r : Math.min(canvas.width / 20, 25);
+ 
+           projectiles.push({
+               x: startX,
+               y: startY,
+               r: stdRadius, 
+               color: nextProjectileColor,
+               vx: Math.cos(angle) * speed,
+               vy: Math.sin(angle) * speed
+           });
+ 
+           // 隨機生成下一顆泡泡的顏色
+           nextProjectileColor = bubbleColors[Math.floor(Math.random() * bubbleColors.length)];
+       }
+ 
+       // 滑鼠控制
+       canvas.addEventListener('mousemove', (e) => {
+           let rect = canvas.getBoundingClientRect();
+           aimX = e.clientX - rect.left;
+           aimY = e.clientY - rect.top;
+           isAiming = true;
+       });
+       canvas.addEventListener('mouseleave', () => {
+           isAiming = false;
+       });
+       canvas.addEventListener('mousedown', (e) => {
+           let rect = canvas.getBoundingClientRect();
+           aimX = e.clientX - rect.left;
+           aimY = e.clientY - rect.top;
+           fireProjectileToAim();
+       });
+ 
+       // 觸控控制 (拖曳瞄準，放開射擊)
+       canvas.addEventListener('touchstart', (e) => {
+           e.preventDefault(); // 防止畫面滾動
+           let rect = canvas.getBoundingClientRect();
+           aimX = e.touches[0].clientX - rect.left;
+           aimY = e.touches[0].clientY - rect.top;
+           isDragging = true;
+           isAiming = true;
+       }, {passive: false});
+ 
+       canvas.addEventListener('touchmove', (e) => {
+           e.preventDefault();
+           if (isDragging) {
+               let rect = canvas.getBoundingClientRect();
+               aimX = e.touches[0].clientX - rect.left;
+               aimY = e.touches[0].clientY - rect.top;
+           }
+       }, {passive: false});
+ 
+       canvas.addEventListener('touchend', (e) => {
+           e.preventDefault();
+           if (isDragging) {
+               fireProjectileToAim();
+               isDragging = false;
+               isAiming = false;
+            }
+       }, {passive: false});
+ 
+       // --- 繪製瞄準線 (包含反彈軌跡) ---
+       function drawAimLine() {
+           if (!isAiming) return;
+           
+           let startX = canvas.width / 2;
+           let startY = canvas.height - 20;
+           let angle = Math.atan2(aimY - startY, aimX - startX);
+           
+           if (angle > -0.05) return; // 防止往下指
+           
+           ctx.beginPath();
+           ctx.setLineDash([8, 12]);
+           ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+           ctx.lineWidth = 4;
+           
+           let currentX = startX;
+           let currentY = startY;
+           let vx = Math.cos(angle);
+           let vy = Math.sin(angle);
+           let stdRadius = bubbles.length > 0 ? bubbles[0].r : Math.min(canvas.width / 20, 25);
+           
+           ctx.moveTo(currentX, currentY);
+           
+           let maxBounces = 2; // 最多顯示 2 次反彈
+           let bounces = 0;
+           
+            for (let i = 0; i < 150; i++) { 
+                currentX += vx * 10;
+                currentY += vy * 10;
+                
+                // 碰到左右牆壁反彈
+                if (currentX - stdRadius <= 0) {
+                    currentX = stdRadius;
+                    vx = Math.abs(vx);
+                    bounces++;
+                    ctx.lineTo(currentX, currentY); // 畫到撞擊點
+                } else if (currentX + stdRadius >= canvas.width) {
+                    currentX = canvas.width - stdRadius;
+                    vx = -Math.abs(vx);
+                    bounces++;
+                    ctx.lineTo(currentX, currentY); // 畫到撞擊點
+                }
+                
+                if (bounces > maxBounces) break;
+                
+                // 碰到天花板停止
+                if (currentY - stdRadius * 2 <= 0) {
+                    ctx.lineTo(currentX, currentY);
+                    break;
+                }
+                
+                // 碰到泡泡停止
+                let hitBubble = false;
+                for(let b of bubbles) {
+                    let dist = Math.hypot(currentX - b.x, currentY - b.y);
+                    if (dist < stdRadius + b.r) {
+                        hitBubble = true;
+                        break;
+                  }
+                }
+                if(hitBubble) {
+                    ctx.lineTo(currentX, currentY);
+                    break;
+                }
+           }
+           
+           ctx.stroke();
+           ctx.setLineDash([]); // 重設虛線樣式
+       }
+ 
+       // --- 渲染循環 ---
+       function draw() {
+           ctx.clearRect(0, 0, canvas.width, canvas.height);
+ 
+           // 畫瞄準線 (包含反彈軌跡)
+           if (!isPaused) {
+               drawAimLine();
+           }
+ 
+           // 畫泡泡
+           bubbles.forEach(b => drawBubble(b.x, b.y, b.r, b.color));
+ 
+           // 畫發射器
+           drawCannon();
+ 
+           // 畫子彈
+           projectiles.forEach(p => {
+               ctx.beginPath();
+               ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+               ctx.fillStyle = p.color;
+               ctx.fill();
+               ctx.strokeStyle = '#cbd5e1';
+               ctx.lineWidth = 2;
+               ctx.stroke();
+           });
+ 
+           // 畫粒子特效
+           particles.forEach(p => {
+               ctx.beginPath();
+               ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+               ctx.fillStyle = p.color;
+               ctx.globalAlpha = Math.max(0, p.life);
+               ctx.fill();
+               ctx.globalAlpha = 1.0;
+           });
+ 
+           // 畫浮動文字 (連環爆破)
+           floatingTexts.forEach(ft => {
+               ctx.font = "bold 24px 'Microsoft JhengHei', sans-serif";
+               ctx.fillStyle = ft.color;
+               ctx.textAlign = "center";
+               ctx.globalAlpha = Math.max(0, ft.life);
+               // 文字外框
+               ctx.strokeStyle = 'white';
+               ctx.lineWidth = 4;
+               ctx.strokeText(ft.text, ft.x, ft.y);
+               ctx.fillText(ft.text, ft.x, ft.y);
+               ctx.globalAlpha = 1.0;
+           });
+       }
+ 
+       function gameLoop() {
+           update();
+           draw();
+           requestAnimationFrame(gameLoop);
+       }
+ 
+       // 啟動主循環
+       gameLoop();
+ 
+   </script>
+</body>
+</html>
